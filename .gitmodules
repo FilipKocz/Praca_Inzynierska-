@@ -1,0 +1,3 @@
+[submodule "external/medusa"]
+	path = external/medusa
+	url = https://gitlab.com/e62Lab/medusa.git
