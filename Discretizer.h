@@ -1,28 +1,37 @@
 #pragma once
+#include <string>
 #include <vector>
 
-// Warstwa pośrednia: GUI nie widzi żadnych nagłówków Medusy.
-// Dzięki temu Medusa (Eigen, szablony) kompiluje się tylko w Discretizer.cpp.
+// GUI nie widzi nagłówków Medusy: ciężki kod (Eigen, szablony) jest tylko w Discretizer.cpp.
 
 struct PointCloud {
-    std::vector<float> xyz;   // x0,y0,z0, x1,y1,z1, ...
-    std::vector<int>   type;  // typ węzła z Medusy: <0 brzeg, >0 wnętrze
+    std::vector<float> xyz;
+    std::vector<int>   type;  // <0 brzeg, >0 wnętrze
+    std::vector<int>   overlap;  // w ilu bryłach leży punkt
     int size() const { return static_cast<int>(type.size()); }
-    std::vector<int> overlap; // w ilu bryłach leży punkt (>=2 -> część wspólna)
 };
 
-enum class ShapeKind { Box, Ball };
+enum class ShapeKind { Box, Ball, Mesh };
 
-// Opis jednej bryły ustawianej z GUI.
-// Dla kuli r to promień, dla sześcianu r to połowa długości krawędzi.
+// Sześcian: r = połowa krawędzi. Siatka: (cx, cy, cz) = przesunięcie, r = skala.
 struct ShapeSpec {
     ShapeKind kind = ShapeKind::Ball;
-    double cx = 0.0, cy = 0.0, cz = 0.0;   // środek
+    bool subtract = false;
+    double cx = 0.0, cy = 0.0, cz = 0.0;
     double r = 0.5;
+    std::string file;
+    double meshVolume = 0.0;   // w skali 1
 };
 
+struct MeshInfo {
+    int vertices = 0, faces = 0;
+    double volume = 0.0;
+    double min[3] = {0, 0, 0}, max[3] = {0, 0, 0};
+};
 
+bool inspectMeshFile(const std::string& path, MeshInfo& info, std::string& error);
+
+// Bryły łączone w kolejności listy, jak `a - b + c` w Medusie.
 PointCloud discretize(const std::vector<ShapeSpec>& shapes, double dx);
-
 
 double estimatePointCount(const std::vector<ShapeSpec>& shapes, double dx);

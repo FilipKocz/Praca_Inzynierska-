@@ -21,7 +21,8 @@ private:
     void addShape(ShapeKind kind);
     void editShape();
     void removeShape();
-    void shapesChanged();     // odświeża listę i zleca nową generację
+    void moveShape(int delta);   // -1 w górę, +1 w dół
+    void shapesChanged();
     void startJob();
     void onJobFinished();
 
@@ -31,12 +32,12 @@ private:
     QSlider* pointSize_ = nullptr;
     QLabel* status_ = nullptr;
 
-    std::vector<ShapeSpec> shapes_;         // bryły w scenie (na starcie puste)
+    std::vector<ShapeSpec> shapes_;
 
-    QTimer debounce_;                       // nie generujemy przy każdym kliknięciu spinboxa
-    QFutureWatcher<PointCloud> watcher_;    // generacja w osobnym wątku -> GUI nie zamarza
-    bool pending_ = false;                  // w trakcie liczenia przyszła zmiana -> policz ponownie
-    bool fitRequested_ = false;             // po zmianie brył dopasuj kamerę do nowej sceny
-    bool jobFit_ = false;                   // czy bieżące zadanie ma dopasować kamerę
+    QTimer debounce_;
+    QFutureWatcher<PointCloud> watcher_;
+    bool pending_ = false;   // zmiana w trakcie liczenia -> policz jeszcze raz
+    bool fitRequested_ = false;
+    bool jobFit_ = false;   // fitRequested_ z chwili startu zadania
     QElapsedTimer clock_;
 };

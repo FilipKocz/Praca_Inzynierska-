@@ -10,17 +10,13 @@
 #include <vector>
 #include "Discretizer.h"
 
-// Widok chmury punktów z kamerą orbitalną:
-//   LPM  - obrót wokół środka sceny
-//   PPM  - przesuwanie (pan)
-//   kółko - zoom
+// Kamera orbitalna: LPM obrót, PPM przesuwanie, kółko zoom.
 class PointCloudView : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT
 public:
     explicit PointCloudView(QWidget* parent = nullptr);
     ~PointCloudView() override;
 
-    // fitCamera = true -> ustaw kamerę tak, żeby cała chmura była widoczna
     void setPointCloud(const PointCloud& pc, bool fitCamera);
     void setPointSize(float px);
     void resetCamera();
@@ -42,12 +38,11 @@ private:
     QOpenGLBuffer vbo_{QOpenGLBuffer::VertexBuffer};
     QOpenGLVertexArrayObject vao_;
 
-    std::vector<float> pending_;   // dane czekające na wysłanie do GPU
+    std::vector<float> pending_;   // czeka na wysłanie do GPU w paintGL()
     bool dirty_ = false;
     int count_ = 0;
     float pointSize_ = 4.0f;
 
-    // kamera orbitalna
     QVector3D sceneCenter_{0, 0, 0};
     float sceneRadius_ = 1.0f;
     QVector3D target_{0, 0, 0};

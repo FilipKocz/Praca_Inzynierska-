@@ -9,7 +9,7 @@ static const char* kVertexShader = R"(
 #version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in float aType;
-layout(location = 2) in float aOverlap;   // w ilu bryłach leży punkt
+layout(location = 2) in float aOverlap;
 uniform mat4 uMVP;
 uniform float uPointSize;
 out vec3 vColor;
@@ -17,11 +17,11 @@ void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
     gl_PointSize = uPointSize;
     if (aType < 0.0)
-        vColor = vec3(0.85, 0.25, 0.20);   // brzeg - czerwony
+        vColor = vec3(0.85, 0.25, 0.20);   // brzeg
     else if (aOverlap >= 2.0)
-        vColor = vec3(0.25, 0.80, 0.35);   // wnętrze w części wspólnej brył - zielony
+        vColor = vec3(0.25, 0.80, 0.35);   // część wspólna
     else
-        vColor = vec3(0.20, 0.45, 0.85);   // wnętrze jednej bryły - niebieski
+        vColor = vec3(0.20, 0.45, 0.85);   // jedna bryła
 }
 )";
 
@@ -33,7 +33,7 @@ void main() {
     vec2 c = gl_PointCoord * 2.0 - 1.0;
     float r2 = dot(c, c);
     if (r2 > 1.0) discard;                 // okrągłe punkty
-    float shade = 1.0 - 0.35 * r2;         // lekkie cieniowanie "kulki"
+    float shade = 1.0 - 0.35 * r2;
     fragColor = vec4(vColor * shade, 1.0);
 }
 )";
@@ -64,7 +64,7 @@ void PointCloudView::initializeGL() {
     vbo_.bind();
     vbo_.setUsagePattern(QOpenGLBuffer::StaticDraw);
 
-    // układ danych: [x y z type overlap] na punkt
+    // [x y z typ overlap] na punkt
     const int stride = 5 * sizeof(float);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
@@ -85,8 +85,8 @@ void PointCloudView::setPointCloud(const PointCloud& pc, bool fitCamera) {
     pending_.resize(5 * n);
 
     QVector3D mn( std::numeric_limits<float>::max(),
-                 std::numeric_limits<float>::max(),
-                 std::numeric_limits<float>::max());
+                  std::numeric_limits<float>::max(),
+                  std::numeric_limits<float>::max());
     QVector3D mx = -mn;
     for (int i = 0; i < n; ++i) {
         QVector3D p(pc.xyz[3*i], pc.xyz[3*i+1], pc.xyz[3*i+2]);
@@ -102,8 +102,6 @@ void PointCloudView::setPointCloud(const PointCloud& pc, bool fitCamera) {
     if (n > 0) {
         sceneCenter_ = (mn + mx) * 0.5f;
         sceneRadius_ = std::max(0.5f * (mx - mn).length(), 1e-3f);
-        // Po zmianie brył dopasowujemy kamerę; po zmianie samego dx nie,
-        // żeby nie gubić widoku, który użytkownik sobie ustawił.
         if (fitCamera) resetCamera();
     }
 
@@ -139,7 +137,7 @@ QMatrix4x4 PointCloudView::viewMatrix() const {
 }
 
 void PointCloudView::paintGL() {
-    if (dirty_) {   // upload robimy tutaj, bo tylko tu kontekst GL jest na pewno aktywny
+    if (dirty_) {   // tylko tu kontekst GL jest na pewno aktywny
         vbo_.bind();
         vbo_.allocate(pending_.data(), static_cast<int>(pending_.size() * sizeof(float)));
         vbo_.release();
