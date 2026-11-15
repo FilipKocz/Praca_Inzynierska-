@@ -55,6 +55,8 @@ add_executable(viewer
     Discretizer.h Discretizer.cpp
     ShapeDialog.h ShapeDialog.cpp
     MeshIO.h MeshIO.cpp
+    PointExport.h PointExport.cpp
+    ProjectIO.h ProjectIO.cpp
 )
 
 target_link_libraries(viewer PRIVATE

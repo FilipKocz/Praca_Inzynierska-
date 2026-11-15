@@ -5,9 +5,10 @@
 // GUI nie widzi nagłówków Medusy: ciężki kod (Eigen, szablony) jest tylko w Discretizer.cpp.
 
 struct PointCloud {
-    std::vector<float> xyz;
-    std::vector<int>   type;  // <0 brzeg, >0 wnętrze
-    std::vector<int>   overlap;  // w ilu bryłach leży punkt
+    std::vector<double> xyz;      // double, bo idzie do eksportu (float: ~7 cyfr)
+    std::vector<int>    type;     // <0 brzeg, >0 wnętrze
+    std::vector<double> normals;  // nx,ny,nz; zewnętrzna normalna brzegu, 0 dla wnętrza
+    std::vector<int>    overlap;  // w ilu bryłach leży punkt
     int size() const { return static_cast<int>(type.size()); }
 };
 

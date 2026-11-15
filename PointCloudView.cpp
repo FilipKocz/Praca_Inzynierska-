@@ -89,7 +89,7 @@ void PointCloudView::setPointCloud(const PointCloud& pc, bool fitCamera) {
                   std::numeric_limits<float>::max());
     QVector3D mx = -mn;
     for (int i = 0; i < n; ++i) {
-        QVector3D p(pc.xyz[3*i], pc.xyz[3*i+1], pc.xyz[3*i+2]);
+        QVector3D p(float(pc.xyz[3*i]), float(pc.xyz[3*i+1]), float(pc.xyz[3*i+2]));
         pending_[5*i]   = p.x();
         pending_[5*i+1] = p.y();
         pending_[5*i+2] = p.z();

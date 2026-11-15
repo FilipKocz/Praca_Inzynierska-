@@ -14,6 +14,13 @@
 #include <QStringList>
 #include <QException>
 #include <QFileInfo>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QMenuBar>
+#include <QStatusBar>
+#include <QCloseEvent>
+#include <QDir>
+#include "PointExport.h"
 #include <exception>
 #include <algorithm>
 #include <cmath>
@@ -164,12 +171,21 @@ MainWindow::MainWindow() {
     connect(upBtn, &QPushButton::clicked, this, [this] { moveShape(-1); });
     connect(downBtn, &QPushButton::clicked, this, [this] { moveShape(+1); });
     connect(list_, &QListWidget::itemDoubleClicked, this, &MainWindow::editShape);
-    connect(dx_, &QDoubleSpinBox::valueChanged, this, [this] { debounce_.start(); });
-    connect(pointSize_, &QSlider::valueChanged, this, [this](int v) { view_->setPointSize(float(v)); });
+    connect(dx_, &QDoubleSpinBox::valueChanged, this, [this] {
+        cloudUpToDate_ = false;
+        setModified(true);
+        debounce_.start();
+    });
+    connect(pointSize_, &QSlider::valueChanged, this, [this](int v) {
+        view_->setPointSize(float(v));
+        setModified(true);
+    });
     connect(resetBtn, &QPushButton::clicked, view_, &PointCloudView::resetCamera);
     connect(&watcher_, &QFutureWatcher<PointCloud>::finished, this, &MainWindow::onJobFinished);
 
+    buildMenu();
     resize(1200, 800);
+    updateTitle();
     status_->setText("Brak brył. Dodaj kulę, sześcian albo wczytaj plik STL.");
 }
 
@@ -228,6 +244,8 @@ void MainWindow::moveShape(int delta) {
 }
 
 void MainWindow::shapesChanged() {
+    cloudUpToDate_ = false;
+    setModified(true);
     list_->clear();
     for (size_t i = 0; i < shapes_.size(); ++i) list_->addItem(describe(shapes_, i));
     fitRequested_ = true;
@@ -241,6 +259,8 @@ void MainWindow::startJob() {
     }
 
     if (shapes_.empty()) {
+        lastCloud_ = PointCloud{};
+        cloudUpToDate_ = true;
         view_->setPointCloud(PointCloud{}, false);
         status_->setText("Brak brył. Dodaj kulę, sześcian albo wczytaj plik STL.");
         return;
@@ -289,6 +309,8 @@ void MainWindow::onJobFinished() {
     }
 
     view_->setPointCloud(pc, jobFit_);
+    lastCloud_ = pc;
+    cloudUpToDate_ = !pending_ && !debounce_.isActive();
     int common = 0;
     for (int i = 0; i < pc.size(); ++i)
         if (pc.type[i] > 0 && !pc.overlap.empty() && pc.overlap[i] >= 2) ++common;
@@ -310,4 +332,155 @@ void MainWindow::onJobFinished() {
         pending_ = false;
         startJob();
     }
+}
+
+void MainWindow::buildMenu() {
+    QMenu* file = menuBar()->addMenu("&Plik");
+    auto add = [&](const QString& text, const QKeySequence& key, auto slot) {
+        QAction* a = file->addAction(text);
+        a->setShortcut(key);
+        connect(a, &QAction::triggered, this, slot);
+    };
+    add("&Nowy projekt", QKeySequence::New, [this] { onNewProject(); });
+    add("&Otwórz projekt...", QKeySequence::Open, [this] { onOpenProject(); });
+    add("&Zapisz projekt", QKeySequence::Save, [this] { onSaveProject(); });
+    add("Zapisz projekt &jako...", QKeySequence::SaveAs, [this] { onSaveProjectAs(); });
+    file->addSeparator();
+    add("&Eksportuj punkty (CSV)...", QKeySequence("Ctrl+E"), [this] { exportPoints(false); });
+    add("Eksportuj punkty (&VTK)...", QKeySequence(), [this] { exportPoints(true); });
+    file->addSeparator();
+    add("Za&kończ", QKeySequence::Quit, [this] { close(); });
+}
+
+ProjectState MainWindow::currentState() const {
+    ProjectState s;
+    s.shapes = shapes_;
+    s.dx = dx_->value();
+    s.pointSize = pointSize_->value();
+    return s;
+}
+
+void MainWindow::applyState(const ProjectState& state) {
+    loading_ = true;
+    shapes_ = state.shapes;
+    dx_->setValue(state.dx);
+    pointSize_->setValue(state.pointSize);
+    shapesChanged();
+    loading_ = false;
+    setModified(false);
+}
+
+void MainWindow::setModified(bool modified) {
+    if (loading_) return;
+    setWindowModified(modified);
+}
+
+void MainWindow::updateTitle() {
+    // [*] - Qt sam wstawia tu gwiazdkę, gdy isWindowModified().
+    const QString name = projectPath_.isEmpty() ? "nowy projekt" : QFileInfo(projectPath_).fileName();
+    setWindowTitle(QString("%1[*] - Discretization Viewer").arg(name));
+}
+
+bool MainWindow::maybeSave() {
+    if (!isWindowModified()) return true;
+    const auto answer = QMessageBox::question(
+        this, "Niezapisane zmiany", "Projekt ma niezapisane zmiany. Zapisać je?",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    if (answer == QMessageBox::Save) return onSaveProject();
+    return answer == QMessageBox::Discard;
+}
+
+void MainWindow::closeEvent(QCloseEvent* e) {
+    if (maybeSave()) e->accept();
+    else e->ignore();
+}
+
+void MainWindow::onNewProject() {
+    if (!maybeSave()) return;
+    projectPath_.clear();
+    applyState(ProjectState{});
+    updateTitle();
+}
+
+void MainWindow::onOpenProject() {
+    if (!maybeSave()) return;
+    const QString path = QFileDialog::getOpenFileName(
+        this, "Otwórz projekt", QFileInfo(projectPath_).absolutePath(),
+        "Projekt (*.json);;Wszystkie pliki (*)");
+    if (path.isEmpty()) return;
+
+    ProjectState state;
+    QStringList warnings;
+    QString error;
+    if (!loadProject(path, state, warnings, error)) {
+        QMessageBox::critical(this, "Otwórz projekt", error);
+        return;
+    }
+    projectPath_ = path;
+    applyState(state);
+    updateTitle();
+    if (!warnings.isEmpty())
+        QMessageBox::warning(this, "Otwórz projekt", warnings.join("\n"));
+}
+
+bool MainWindow::onSaveProject() {
+    if (projectPath_.isEmpty()) return onSaveProjectAs();
+    return writeProject(projectPath_);
+}
+
+bool MainWindow::onSaveProjectAs() {
+    QString path = QFileDialog::getSaveFileName(
+        this, "Zapisz projekt",
+        projectPath_.isEmpty() ? QDir::homePath() + "/projekt.json" : projectPath_,
+        "Projekt (*.json)");
+    if (path.isEmpty()) return false;
+    if (QFileInfo(path).suffix().isEmpty()) path += ".json";
+    return writeProject(path);
+}
+
+bool MainWindow::writeProject(const QString& path) {
+    QString error;
+    if (!saveProject(path, currentState(), error)) {
+        QMessageBox::critical(this, "Zapisz projekt", error);
+        return false;
+    }
+    projectPath_ = path;
+    setModified(false);
+    updateTitle();
+    statusBar()->showMessage("Zapisano: " + path, 4000);
+    return true;
+}
+
+void MainWindow::exportPoints(bool vtk) {
+    // Eksportujemy dokładnie to, co widać, więc wynik musi być aktualny.
+    if (watcher_.isRunning() || pending_ || debounce_.isActive() || !cloudUpToDate_) {
+        QMessageBox::information(this, "Eksport",
+                                 "Dyskretyzacja nie jest aktualna (trwa generowanie albo "
+                                 "przekroczono limit punktów). Poczekaj na wynik i spróbuj ponownie.");
+        return;
+    }
+    if (lastCloud_.size() == 0) {
+        QMessageBox::information(this, "Eksport", "Brak punktów do eksportu.");
+        return;
+    }
+
+    const QString ext = vtk ? "vtk" : "csv";
+    const QString base = projectPath_.isEmpty()
+        ? QDir::homePath() + "/dyskretyzacja"
+        : QFileInfo(projectPath_).absolutePath() + "/" + QFileInfo(projectPath_).completeBaseName();
+    QString path = QFileDialog::getSaveFileName(
+        this, "Eksportuj punkty", base + "." + ext,
+        vtk ? "VTK (*.vtk)" : "CSV (*.csv)");
+    if (path.isEmpty()) return;
+    if (QFileInfo(path).suffix().isEmpty()) path += "." + ext;
+
+    std::string error;
+    const bool ok = vtk ? exportVtk(lastCloud_, path.toStdString(), error)
+                        : exportCsv(lastCloud_, path.toStdString(), error);
+    if (!ok) {
+        QMessageBox::critical(this, "Eksport", QString::fromStdString(error));
+        return;
+    }
+    statusBar()->showMessage(QString("Wyeksportowano %1 punktów: %2").arg(lastCloud_.size()).arg(path),
+                             6000);
 }

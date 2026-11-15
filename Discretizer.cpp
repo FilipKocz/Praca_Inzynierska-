@@ -72,13 +72,20 @@ PointCloud discretize(const std::vector<ShapeSpec>& shapes, double dx) {
     const int n = d.size();
     pc.xyz.reserve(3 * n);
     pc.type.reserve(n);
+    pc.normals.reserve(3 * n);
     pc.overlap.reserve(n);
     for (int i = 0; i < n; ++i) {
         const Vec3d& p = d.pos(i);
-        pc.xyz.push_back(static_cast<float>(p[0]));
-        pc.xyz.push_back(static_cast<float>(p[1]));
-        pc.xyz.push_back(static_cast<float>(p[2]));
+        pc.xyz.push_back(p[0]);
+        pc.xyz.push_back(p[1]);
+        pc.xyz.push_back(p[2]);
         pc.type.push_back(d.type(i));
+
+        // Medusa trzyma normalne tylko dla węzłów brzegowych (type < 0).
+        const Vec3d nrm = d.type(i) < 0 ? d.normal(i) : Vec3d(0.0, 0.0, 0.0);
+        pc.normals.push_back(nrm[0]);
+        pc.normals.push_back(nrm[1]);
+        pc.normals.push_back(nrm[2]);
 
         // Tylko bryły dodawane - wycinane nie tworzą części wspólnej.
         int count = 0;

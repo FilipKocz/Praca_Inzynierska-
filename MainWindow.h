@@ -5,19 +5,37 @@
 #include <QElapsedTimer>
 #include <vector>
 #include "Discretizer.h"
+#include "ProjectIO.h"
 
 class PointCloudView;
 class QListWidget;
 class QDoubleSpinBox;
 class QSlider;
 class QLabel;
+class QCloseEvent;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow();
 
+protected:
+    void closeEvent(QCloseEvent* e) override;
+
 private:
+    void buildMenu();
+    void onNewProject();
+    void onOpenProject();
+    bool onSaveProject();
+    bool onSaveProjectAs();
+    bool writeProject(const QString& path);
+    void exportPoints(bool vtk);
+    bool maybeSave();          // false = użytkownik anulował
+    void setModified(bool modified);
+    void updateTitle();
+    ProjectState currentState() const;
+    void applyState(const ProjectState& state);
+
     void addShape(ShapeKind kind);
     void editShape();
     void removeShape();
@@ -40,4 +58,9 @@ private:
     bool fitRequested_ = false;
     bool jobFit_ = false;   // fitRequested_ z chwili startu zadania
     QElapsedTimer clock_;
+
+    PointCloud lastCloud_;          // ostatni wynik, do eksportu
+    bool cloudUpToDate_ = true;     // czy lastCloud_ odpowiada obecnym ustawieniom
+    QString projectPath_;
+    bool loading_ = false;          // przy wczytywaniu projektu nie oznaczamy zmian
 };
