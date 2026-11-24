@@ -30,6 +30,15 @@ bool kindFromName(const QString& name, ShapeKind& k) {
 
 QJsonArray vec3(double x, double y, double z) { return QJsonArray{x, y, z}; }
 
+const char* modeName(DensityMode m) {
+    switch (m) {
+        case DensityMode::Constant: return "constant";
+        case DensityMode::Profile:  return "profile";
+        case DensityMode::Formula:  return "formula";
+    }
+    return "constant";
+}
+
 }  // namespace
 
 bool saveProject(const QString& path, const ProjectState& state, QString& error) {
@@ -56,7 +65,11 @@ bool saveProject(const QString& path, const ProjectState& state, QString& error)
     QJsonObject root;
     root["format"] = kFormat;
     root["version"] = kVersion;
-    root["dx"] = state.dx;
+    const DensitySpec& d = state.density;
+    root["density"] = QJsonObject{
+        {"mode", modeName(d.mode)}, {"h", d.h},
+        {"hMin", d.hMin}, {"hMax", d.hMax}, {"s1", d.s1}, {"s2", d.s2},
+        {"formula", QString::fromStdString(d.formula)}};
     root["pointSize"] = state.pointSize;
     root["shapes"] = shapes;
 
@@ -92,7 +105,21 @@ bool loadProject(const QString& path, ProjectState& state, QStringList& warnings
 
     const QDir projectDir = QFileInfo(path).absoluteDir();
     ProjectState loaded;
-    loaded.dx = root["dx"].toDouble(0.05);
+    if (root.contains("density")) {
+        const QJsonObject d = root["density"].toObject();
+        DensitySpec& ds = loaded.density;
+        const QString mode = d["mode"].toString();
+        ds.mode = mode == "profile" ? DensityMode::Profile
+                : mode == "formula" ? DensityMode::Formula : DensityMode::Constant;
+        ds.h = d["h"].toDouble(ds.h);
+        ds.hMin = d["hMin"].toDouble(ds.hMin);
+        ds.hMax = d["hMax"].toDouble(ds.hMax);
+        ds.s1 = d["s1"].toDouble(ds.s1);
+        ds.s2 = d["s2"].toDouble(ds.s2);
+        ds.formula = d["formula"].toString(QString::fromStdString(ds.formula)).toStdString();
+    } else {
+        loaded.density.h = root["dx"].toDouble(0.05);   // projekty sprzed funkcji zagęszczenia
+    }
     loaded.pointSize = root["pointSize"].toInt(4);
 
     const QJsonArray shapes = root["shapes"].toArray();

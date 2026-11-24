@@ -13,6 +13,8 @@ class QDoubleSpinBox;
 class QSlider;
 class QLabel;
 class QCloseEvent;
+class DensityPanel;
+class MetricsPanel;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -46,7 +48,8 @@ private:
 
     PointCloudView* view_ = nullptr;
     QListWidget* list_ = nullptr;
-    QDoubleSpinBox* dx_ = nullptr;
+    DensityPanel* density_ = nullptr;
+    MetricsPanel* metrics_ = nullptr;
     QSlider* pointSize_ = nullptr;
     QLabel* status_ = nullptr;
 

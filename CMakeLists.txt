@@ -57,6 +57,10 @@ add_executable(viewer
     MeshIO.h MeshIO.cpp
     PointExport.h PointExport.cpp
     ProjectIO.h ProjectIO.cpp
+    Expression.h Expression.cpp
+    Density.h Density.cpp
+    DensityPanel.h DensityPanel.cpp
+    MetricsPanel.h MetricsPanel.cpp
 )
 
 target_link_libraries(viewer PRIVATE

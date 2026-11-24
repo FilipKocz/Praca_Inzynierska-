@@ -26,18 +26,22 @@ int overlapAt(const PointCloud& pc, int i) {
     return pc.overlap.empty() ? 1 : pc.overlap[i];
 }
 
+double nnDistAt(const PointCloud& pc, int i) {
+    return pc.nnDist.empty() ? 0.0 : pc.nnDist[i];
+}
+
 }  // namespace
 
 bool exportCsv(const PointCloud& pc, const std::string& path, std::string& error) {
     std::ofstream out;
     if (!openOut(out, path, error)) return false;
 
-    out << "x,y,z,type,nx,ny,nz,overlap\n";
+    out << "x,y,z,type,nx,ny,nz,overlap,nn_dist\n";
     for (int i = 0; i < pc.size(); ++i) {
         out << pc.xyz[3 * i] << ',' << pc.xyz[3 * i + 1] << ',' << pc.xyz[3 * i + 2] << ','
             << pc.type[i] << ','
             << normalAt(pc, i, 0) << ',' << normalAt(pc, i, 1) << ',' << normalAt(pc, i, 2) << ','
-            << overlapAt(pc, i) << '\n';
+            << overlapAt(pc, i) << ',' << nnDistAt(pc, i) << '\n';
     }
     if (!out) {
         error = "Błąd zapisu pliku: " + path;
@@ -68,6 +72,8 @@ bool exportVtk(const PointCloud& pc, const std::string& path, std::string& error
     for (int i = 0; i < n; ++i) out << pc.type[i] << '\n';
     out << "SCALARS overlap int 1\nLOOKUP_TABLE default\n";
     for (int i = 0; i < n; ++i) out << overlapAt(pc, i) << '\n';
+    out << "SCALARS nn_dist double 1\nLOOKUP_TABLE default\n";
+    for (int i = 0; i < n; ++i) out << nnDistAt(pc, i) << '\n';
     out << "NORMALS normals double\n";
     for (int i = 0; i < n; ++i)
         out << normalAt(pc, i, 0) << ' ' << normalAt(pc, i, 1) << ' ' << normalAt(pc, i, 2) << '\n';

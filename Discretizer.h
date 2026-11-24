@@ -9,6 +9,7 @@ struct PointCloud {
     std::vector<int>    type;     // <0 brzeg, >0 wnętrze
     std::vector<double> normals;  // nx,ny,nz; zewnętrzna normalna brzegu, 0 dla wnętrza
     std::vector<int>    overlap;  // w ilu bryłach leży punkt
+    std::vector<double> nnDist;   // d_min: odległość do najbliższego sąsiada
     int size() const { return static_cast<int>(type.size()); }
 };
 
@@ -32,7 +33,28 @@ struct MeshInfo {
 
 bool inspectMeshFile(const std::string& path, MeshInfo& info, std::string& error);
 
-// Bryły łączone w kolejności listy, jak `a - b + c` w Medusie.
-PointCloud discretize(const std::vector<ShapeSpec>& shapes, double dx);
+enum class DensityMode { Constant, Profile, Formula };
 
-double estimatePointCount(const std::vector<ShapeSpec>& shapes, double dx);
+// Funkcja zagęszczenia h = odległość między sąsiednimi punktami.
+// s = odległość punktu od brzegu obszaru.
+//   Constant: h
+//   Profile:  hMin dla s <= s1, liniowo do hMax przy s2, hMax dla s >= s2
+//   Formula:  dowolny wzór h(x, y, z, s)
+struct DensitySpec {
+    DensityMode mode = DensityMode::Constant;
+    double h = 0.05;
+    double hMin = 0.02, hMax = 0.1;
+    double s1 = 0.0, s2 = 0.3;
+    std::string formula = "0.02 + 0.1*s";
+};
+
+// Wartość profilu (tryb Profile) - wspólna dla Medusy i wykresu w GUI.
+double profileH(const DensitySpec& d, double s);
+
+// Bryły łączone w kolejności listy, jak `a - b + c` w Medusie.
+// Rzuca std::runtime_error, gdy wzór jest błędny albo punktów byłoby więcej niż maxPoints.
+PointCloud discretize(const std::vector<ShapeSpec>& shapes, const DensitySpec& density,
+                      double maxPoints);
+
+// Szybki szacunek przed uruchomieniem Medusy; 0 = nie da się oszacować (wzór).
+double estimatePointCount(const std::vector<ShapeSpec>& shapes, const DensitySpec& density);

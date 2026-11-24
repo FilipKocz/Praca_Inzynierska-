@@ -1,6 +1,8 @@
 #include "MainWindow.h"
 #include "PointCloudView.h"
 #include "ShapeDialog.h"
+#include "DensityPanel.h"
+#include "MetricsPanel.h"
 #include <QListWidget>
 #include <QDoubleSpinBox>
 #include <QSlider>
@@ -134,13 +136,10 @@ MainWindow::MainWindow() {
     orderRow->addWidget(downBtn);
     layout->addLayout(orderRow);
 
+    density_ = new DensityPanel;
+    layout->addWidget(density_);
+
     auto* form = new QFormLayout;
-    dx_ = new QDoubleSpinBox;
-    dx_->setDecimals(4);
-    dx_->setRange(0.001, 10.0);
-    dx_->setSingleStep(0.005);
-    dx_->setValue(0.05);
-    form->addRow("Krok dx", dx_);
 
     pointSize_ = new QSlider(Qt::Horizontal);
     pointSize_->setRange(1, 20);
@@ -159,6 +158,30 @@ MainWindow::MainWindow() {
     dock->setWidget(panel);
     addDockWidget(Qt::LeftDockWidgetArea, dock);
 
+    metrics_ = new MetricsPanel;
+    auto* metricsDock = new QDockWidget("Miary dyskretyzacji", this);
+    metricsDock->setWidget(metrics_);
+    addDockWidget(Qt::RightDockWidgetArea, metricsDock);
+
+    view_->setNeighborCount(metrics_->neighborCount());
+    connect(metrics_, &MetricsPanel::neighborCountChanged, view_, &PointCloudView::setNeighborCount);
+    connect(view_, &PointCloudView::pointHovered, this,
+            [this](int i, const QVector<int>& nbrs, const QVector<double>& dists) {
+        if (i < 0 || i >= lastCloud_.size()) return;
+        const PointCloud& pc = lastCloud_;
+        QString text = QString("Punkt #%1 (%2)\n(%3, %4, %5)")
+                           .arg(i).arg(pc.type[i] < 0 ? "brzeg" : "wnętrze")
+                           .arg(pc.xyz[3*i], 0, 'g', 5).arg(pc.xyz[3*i+1], 0, 'g', 5)
+                           .arg(pc.xyz[3*i+2], 0, 'g', 5);
+        if (!pc.nnDist.empty()) text += QString("\nd_min = %1").arg(pc.nnDist[i], 0, 'g', 5);
+        if (!dists.isEmpty())
+            text += QString("\n%1 sąsiadów: najbliższy %2, najdalszy %3\nmin / max = %4")
+                        .arg(nbrs.size())
+                        .arg(dists.front(), 0, 'g', 5).arg(dists.back(), 0, 'g', 5)
+                        .arg(dists.front() / dists.back(), 0, 'f', 3);
+        metrics_->setNeighbors(i, dists, text);
+    });
+
     debounce_.setSingleShot(true);
     debounce_.setInterval(200);
     connect(&debounce_, &QTimer::timeout, this, &MainWindow::startJob);
@@ -171,7 +194,7 @@ MainWindow::MainWindow() {
     connect(upBtn, &QPushButton::clicked, this, [this] { moveShape(-1); });
     connect(downBtn, &QPushButton::clicked, this, [this] { moveShape(+1); });
     connect(list_, &QListWidget::itemDoubleClicked, this, &MainWindow::editShape);
-    connect(dx_, &QDoubleSpinBox::valueChanged, this, [this] {
+    connect(density_, &DensityPanel::changed, this, [this] {
         cloudUpToDate_ = false;
         setModified(true);
         debounce_.start();
@@ -184,7 +207,7 @@ MainWindow::MainWindow() {
     connect(&watcher_, &QFutureWatcher<PointCloud>::finished, this, &MainWindow::onJobFinished);
 
     buildMenu();
-    resize(1200, 800);
+    resize(1500, 850);
     updateTitle();
     status_->setText("Brak brył. Dodaj kulę, sześcian albo wczytaj plik STL.");
 }
@@ -244,6 +267,14 @@ void MainWindow::moveShape(int delta) {
 }
 
 void MainWindow::shapesChanged() {
+    double depth = 0.0;
+    for (const ShapeSpec& s : shapes_) {
+        if (s.subtract) continue;
+        const double r = s.kind == ShapeKind::Mesh ? 0.5 * std::cbrt(s.meshVolume) * s.r : s.r;
+        depth = std::max(depth, r);
+    }
+    density_->setPlotRange(depth);
+
     cloudUpToDate_ = false;
     setModified(true);
     list_->clear();
@@ -262,14 +293,19 @@ void MainWindow::startJob() {
         lastCloud_ = PointCloud{};
         cloudUpToDate_ = true;
         view_->setPointCloud(PointCloud{}, false);
+        metrics_->setCloud(PointCloud{});
         status_->setText("Brak brył. Dodaj kulę, sześcian albo wczytaj plik STL.");
         return;
     }
 
-    const double dx = dx_->value();
-    const double estimate = estimatePointCount(shapes_, dx);
+    const DensitySpec density = density_->spec();
+    if (density.mode == DensityMode::Formula && !density_->formulaValid()) {
+        status_->setText("Popraw wzór funkcji zagęszczenia.");
+        return;
+    }
+    const double estimate = estimatePointCount(shapes_, density);
     if (estimate > kMaxPoints) {
-        status_->setText(QString("Za dużo punktów (ok. %1 mln). Zwiększ dx albo zmniejsz bryły.")
+        status_->setText(QString("Za dużo punktów (ok. %1 mln). Zwiększ h albo zmniejsz bryły.")
                              .arg(estimate / 1e6, 0, 'f', 1));
         return;
     }
@@ -279,7 +315,9 @@ void MainWindow::startJob() {
     status_->setText("Generowanie...");
     clock_.start();
     const std::vector<ShapeSpec> shapes = shapes_;   // kopia dla wątku roboczego
-    watcher_.setFuture(QtConcurrent::run([shapes, dx] { return discretize(shapes, dx); }));
+    watcher_.setFuture(QtConcurrent::run([shapes, density] {
+        return discretize(shapes, density, kMaxPoints);
+    }));
 }
 
 void MainWindow::onJobFinished() {
@@ -309,6 +347,7 @@ void MainWindow::onJobFinished() {
     }
 
     view_->setPointCloud(pc, jobFit_);
+    metrics_->setCloud(pc);
     lastCloud_ = pc;
     cloudUpToDate_ = !pending_ && !debounce_.isActive();
     int common = 0;
@@ -355,7 +394,7 @@ void MainWindow::buildMenu() {
 ProjectState MainWindow::currentState() const {
     ProjectState s;
     s.shapes = shapes_;
-    s.dx = dx_->value();
+    s.density = density_->spec();
     s.pointSize = pointSize_->value();
     return s;
 }
@@ -363,7 +402,7 @@ ProjectState MainWindow::currentState() const {
 void MainWindow::applyState(const ProjectState& state) {
     loading_ = true;
     shapes_ = state.shapes;
-    dx_->setValue(state.dx);
+    density_->setSpec(state.density);
     pointSize_->setValue(state.pointSize);
     shapesChanged();
     loading_ = false;

@@ -8,7 +8,7 @@
 // po wczytaniu generuje je ponownie Medusa (GeneralFill ma stałe ziarno).
 struct ProjectState {
     std::vector<ShapeSpec> shapes;
-    double dx = 0.05;
+    DensitySpec density;
     int pointSize = 4;
 };
 
